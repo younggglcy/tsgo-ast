@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:wasm": "bash scripts/build.sh",
+    "build:js": "rolldown -c && tsc --emitDeclarationOnly",
+    "build": "bun run build:wasm && bun run build:js"
+  },
+  "devDependencies": {
+    "rolldown": "^1.0.0-beta.8",
+    "typescript": "^5.9.3"
+  }
+}
