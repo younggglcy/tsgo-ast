@@ -18,14 +18,21 @@ export interface ParseResult {
   errors: string[];
 }
 
-let initialized = false;
+let initPromise: Promise<void> | null = null;
 
 /**
  * Initialize the Go WASM runtime. Must be called before parseAST().
+ * Safe to call concurrently — only the first call triggers initialization.
  * @param wasmUrl - Custom URL to the WASM file. Defaults to the bundled tsgo-ast.wasm.
  */
-export async function initGoAst(wasmUrl?: string | URL): Promise<void> {
-  if (initialized) return;
+export function initGoAst(wasmUrl?: string | URL): Promise<void> {
+  if (!initPromise) {
+    initPromise = doInit(wasmUrl);
+  }
+  return initPromise;
+}
+
+async function doInit(wasmUrl?: string | URL): Promise<void> {
   await import("./wasm_exec.js");
   const go = new Go();
   const url = wasmUrl ?? new URL("./tsgo-ast.wasm", import.meta.url);
@@ -43,8 +50,10 @@ export async function initGoAst(wasmUrl?: string | URL): Promise<void> {
     result = await WebAssembly.instantiate(bytes, go.importObject);
   }
   // Don't await — Go main() blocks forever with select{}
-  go.run(result.instance);
-  initialized = true;
+  // Attach .catch() to prevent unhandled rejection if runtime fails
+  go.run(result.instance).catch((err) => {
+    console.error("Go WASM runtime error:", err);
+  });
 }
 
 /**
@@ -56,7 +65,7 @@ export function parseAST(
   code: string,
   lang: "ts" | "tsx" | "js" | "jsx" = "tsx",
 ): ParseResult {
-  if (!initialized) throw new Error("Call initGoAst() first");
+  if (!initPromise) throw new Error("Call initGoAst() first");
   return goParseAST(code, lang);
 }
 
@@ -64,5 +73,5 @@ export function parseAST(
  * Check whether the Go WASM runtime has been initialized.
  */
 export function isInitialized(): boolean {
-  return initialized;
+  return initPromise !== null;
 }
