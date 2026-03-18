@@ -15,7 +15,7 @@
     "wasm_exec.js",
     "tsgo-ast.wasm"
   ],
-  "sideEffects": false,
+  "sideEffects": ["./wasm_exec.js"],
   "keywords": ["typescript", "ast", "go", "wasm", "parser"],
   "license": "MIT",
   "repository": {

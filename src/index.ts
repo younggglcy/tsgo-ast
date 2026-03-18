@@ -29,10 +29,19 @@ export async function initGoAst(wasmUrl?: string | URL): Promise<void> {
   await import("./wasm_exec.js");
   const go = new Go();
   const url = wasmUrl ?? new URL("./tsgo-ast.wasm", import.meta.url);
-  const result = await WebAssembly.instantiateStreaming(
-    fetch(url),
-    go.importObject,
-  );
+  const response = fetch(url);
+  let result: WebAssembly.WebAssemblyInstantiatedSource;
+  try {
+    result = await WebAssembly.instantiateStreaming(
+      response,
+      go.importObject,
+    );
+  } catch {
+    // Fallback for environments where instantiateStreaming fails
+    // (e.g. missing application/wasm MIME type, file:// protocol)
+    const bytes = await (await response).arrayBuffer();
+    result = await WebAssembly.instantiate(bytes, go.importObject);
+  }
   // Don't await — Go main() blocks forever with select{}
   go.run(result.instance);
   initialized = true;

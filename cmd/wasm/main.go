@@ -44,10 +44,20 @@ func langToFileName(lang string) string {
 	}
 }
 
-func parseAST(_ js.Value, args []js.Value) any {
+func makeErrorResult(msg string) js.Value {
+	result := map[string]any{
+		"ast":    nil,
+		"errors": []string{msg},
+	}
+	jsonBytes, _ := json.Marshal(result)
+	return js.Global().Get("JSON").Call("parse", string(jsonBytes))
+}
+
+func parseAST(_ js.Value, args []js.Value) (ret any) {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Println("goParseAST panic:", r)
+			ret = makeErrorResult(fmt.Sprintf("panic: %v", r))
 		}
 	}()
 
@@ -76,7 +86,7 @@ func parseAST(_ js.Value, args []js.Value) any {
 
 	jsonBytes, err := json.Marshal(result)
 	if err != nil {
-		return js.ValueOf(fmt.Sprintf(`{"error":%q}`, err.Error()))
+		return makeErrorResult(fmt.Sprintf("json.Marshal failed: %s", err.Error()))
 	}
 
 	// Use JSON.parse on the JS side for reliable conversion
