@@ -74,9 +74,27 @@ tsgolint/              # Git submodule (oxc-project/tsgolint → typescript-go)
 
 ## Release Process
 
-1. Update version in `npm/package.json`
-2. Push a `v*` tag (e.g., `git tag v0.2.0 && git push --tags`)
-3. GitHub Actions builds and publishes to npm automatically
+This project uses [@changesets/cli](https://github.com/changesets/changesets) for versioning and changelog generation, with OIDC token-less publishing to npm.
+
+### Developer workflow
+
+1. Make changes and add a changeset: `bunx changeset`
+2. Commit the changeset file with your code
+3. Push and merge PR to `main`
+
+### What happens on CI
+
+1. `changesets/action` detects pending changesets and opens a "Version Packages" PR
+2. The PR bumps `npm/package.json` version and updates `CHANGELOG.md`
+3. When the Version PR is merged, CI automatically:
+   - Builds WASM + JS (`bun run build`)
+   - Publishes to npm with OIDC provenance (`npm publish --provenance --access public`)
+   - Creates a GitHub Release with the changelog as body
+
+### Manual steps (one-time setup, already done)
+
+- npm trusted publishing configured for `younggglcy/tsgo-ast` + `release.yml`
+- No `NPM_TOKEN` secret needed — OIDC handles authentication
 
 ## Common Tasks
 
