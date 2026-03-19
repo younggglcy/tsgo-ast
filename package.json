@@ -6,7 +6,10 @@
   "scripts": {
     "build:wasm": "bash scripts/build.sh",
     "build:js": "rolldown -c && tsc --emitDeclarationOnly",
-    "build": "bun run build:wasm && bun run build:js"
+    "build": "bun run build:wasm && bun run build:js",
+    "changeset": "changeset",
+    "version": "changeset version && node scripts/sync-changelog.js && git add CHANGELOG.md",
+    "release": "bun run build && cd npm && npm publish --provenance --access public"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.6.0",
