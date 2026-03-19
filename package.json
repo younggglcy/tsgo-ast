@@ -1,6 +1,8 @@
 {
+  "name": "tsgo-ast-root",
   "private": true,
   "type": "module",
+  "workspaces": ["npm"],
   "scripts": {
     "build:wasm": "bash scripts/build.sh",
     "build:js": "rolldown -c && tsc --emitDeclarationOnly",
