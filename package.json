@@ -7,6 +7,8 @@
     "build": "bun run build:wasm && bun run build:js"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "^0.6.0",
+    "@changesets/cli": "^2.30.0",
     "rolldown": "^1.0.0-beta.8",
     "typescript": "^5.9.3"
   }
