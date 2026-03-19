@@ -2,14 +2,17 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,13 +32,11 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build WASM
-        run: bash scripts/build.sh
-
-      - name: Build JS + DTS
-        run: bun run build:js
-
-      - name: Publish to npm
-        run: cd npm && npm publish
+      - name: Create Release Pull Request or Publish
+        uses: changesets/action@v1
+        with:
+          version: bun run version
+          publish: bun run release
+          createGithubReleases: true
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

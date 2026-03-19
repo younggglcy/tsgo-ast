@@ -3,3 +3,4 @@ npm/index.js
 npm/index.d.ts
 npm/tsgo-ast.wasm
 npm/wasm_exec.js
+npm/CHANGELOG.md
