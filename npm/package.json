@@ -5,13 +5,13 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./index.d.ts",
+      "types": "./src/index.d.ts",
       "default": "./index.js"
     }
   },
   "files": [
     "index.js",
-    "index.d.ts",
+    "src/index.d.ts",
     "wasm_exec.js",
     "tsgo-ast.wasm"
   ],
