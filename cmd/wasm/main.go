@@ -46,11 +46,47 @@ func langToFileName(lang string) string {
 
 func makeErrorResult(msg string) js.Value {
 	result := map[string]any{
-		"ast":    nil,
-		"errors": []string{msg},
+		"ast":            nil,
+		"errors":         []string{msg},
+		"sourceFileInfo": nil,
 	}
 	jsonBytes, _ := json.Marshal(result)
 	return js.Global().Get("JSON").Call("parse", string(jsonBytes))
+}
+
+func serializeFileRefs(refs []*ast.FileReference) []any {
+	if len(refs) == 0 {
+		return nil
+	}
+	result := make([]any, 0, len(refs))
+	for _, ref := range refs {
+		result = append(result, map[string]any{
+			"fileName": ref.FileName,
+			"start":    ref.Pos(),
+			"end":      ref.End(),
+		})
+	}
+	return result
+}
+
+func extractPragmas(sf *ast.SourceFile) []string {
+	if len(sf.Pragmas) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(sf.Pragmas))
+	for _, p := range sf.Pragmas {
+		names = append(names, p.Name)
+	}
+	return names
+}
+
+func buildSourceFileInfo(sf *ast.SourceFile) map[string]any {
+	return map[string]any{
+		"isDeclarationFile":       sf.IsDeclarationFile,
+		"pragmas":                 extractPragmas(sf),
+		"referencedFiles":         serializeFileRefs(sf.ReferencedFiles),
+		"typeReferenceDirectives": serializeFileRefs(sf.TypeReferenceDirectives),
+	}
 }
 
 func parseAST(_ js.Value, args []js.Value) (ret any) {
@@ -72,7 +108,9 @@ func parseAST(_ js.Value, args []js.Value) (ret any) {
 		Path:     tspath.Path(fileName),
 	}, code, scriptKind)
 
-	astMap := goast.SerializeNode(sourceFile.AsNode())
+	// Use enriched Serializer
+	serializer := goast.NewSerializer(sourceFile)
+	astMap := serializer.SerializeNode(sourceFile.AsNode())
 
 	var errors []string
 	for _, diag := range sourceFile.Diagnostics() {
@@ -80,8 +118,9 @@ func parseAST(_ js.Value, args []js.Value) (ret any) {
 	}
 
 	result := map[string]any{
-		"ast":    astMap,
-		"errors": errors,
+		"ast":            astMap,
+		"errors":         errors,
+		"sourceFileInfo": buildSourceFileInfo(sourceFile),
 	}
 
 	jsonBytes, err := json.Marshal(result)
@@ -89,7 +128,6 @@ func parseAST(_ js.Value, args []js.Value) (ret any) {
 		return makeErrorResult(fmt.Sprintf("json.Marshal failed: %s", err.Error()))
 	}
 
-	// Use JSON.parse on the JS side for reliable conversion
 	return js.Global().Get("JSON").Call("parse", string(jsonBytes))
 }
 
