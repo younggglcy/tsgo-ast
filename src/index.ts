@@ -10,12 +10,42 @@ export interface GoAstNode {
   type: string;
   start: number;
   end: number;
+  loc?: {
+    startLine: number;
+    startColumn: number;
+    endLine: number;
+    endColumn: number;
+  };
+  flags?: string[];
+  leadingComments?: AstComment[];
+  trailingComments?: AstComment[];
   [key: string]: unknown;
+}
+
+export interface AstComment {
+  type: "line" | "block";
+  text: string;
+  start: number;
+  end: number;
+}
+
+export interface SourceFileInfo {
+  isDeclarationFile: boolean;
+  pragmas: string[] | null;
+  referencedFiles: FileReference[] | null;
+  typeReferenceDirectives: FileReference[] | null;
+}
+
+export interface FileReference {
+  fileName: string;
+  start: number;
+  end: number;
 }
 
 export interface ParseResult {
   ast: GoAstNode;
-  errors: string[];
+  errors: string[] | null;
+  sourceFileInfo: SourceFileInfo;
 }
 
 let initPromise: Promise<void> | null = null;
