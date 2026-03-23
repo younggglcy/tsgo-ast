@@ -5,7 +5,7 @@
   "workspaces": ["npm"],
   "scripts": {
     "build:wasm": "bash scripts/build.sh",
-    "build:js": "rolldown -c && tsc --emitDeclarationOnly",
+    "build:js": "rolldown -c",
     "build": "bun run build:wasm && bun run build:js",
     "changeset": "changeset",
     "version": "changeset version && node scripts/sync-changelog.js && git add CHANGELOG.md",
