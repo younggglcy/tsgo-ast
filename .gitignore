@@ -1,4 +1,5 @@
 node_modules/
+.worktrees/
 npm/index.js
 npm/src/
 npm/tsgo-ast.wasm

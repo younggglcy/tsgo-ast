@@ -7,13 +7,11 @@
     "build:wasm": "bash scripts/build.sh",
     "build:js": "rolldown -c",
     "build": "bun run build:wasm && bun run build:js",
-    "changeset": "changeset",
-    "version": "changeset version && node scripts/sync-changelog.js && git add CHANGELOG.md",
+    "test:release": "bun test scripts/release-lib.test.mjs",
+    "release:pr": "node scripts/release-pr.mjs",
     "release": "bun run build && cd npm && npm publish --provenance --access public"
   },
   "devDependencies": {
-    "@changesets/changelog-github": "^0.6.0",
-    "@changesets/cli": "^2.30.0",
     "rolldown": "^1.0.0-beta.8",
     "typescript": "^5.9.3"
   }
