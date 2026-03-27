@@ -103,7 +103,8 @@ The project uses a release PR flow instead of publishing directly from arbitrary
 1. start from a clean local `main`
 2. run `bun run release:pr <version>`
 3. merge the generated release PR into `main`
-4. let `.github/workflows/release.yml` build, publish, tag, and create the GitHub release
+4. let `.github/workflows/ci.yml` pass on `main`
+5. let `.github/workflows/release.yml` build, publish, tag, and create the GitHub release
 
 ## Where To Read Next
 

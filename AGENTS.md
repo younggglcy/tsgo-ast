@@ -38,7 +38,8 @@ Flow: `src/index.ts` → `cmd/wasm/main.go` → `goast/*` → JSON AST.
 - Start from a clean local `main`.
 - Run `bun run release:pr <version>`.
 - The command generates `CHANGELOG.md` from commits since the previous `v*` tag, bumps `npm/package.json`, pushes `release/v<version>`, and opens a PR.
-- Merging that release PR to `main` triggers `.github/workflows/release.yml`, which builds, publishes to npm, tags `v<version>`, and creates the GitHub Release from `CHANGELOG.md`.
+- Merging that release PR to `main` first triggers `.github/workflows/ci.yml`.
+- Once `CI` succeeds on `main`, `.github/workflows/release.yml` builds, publishes to npm, tags `v<version>`, and creates the GitHub Release from `CHANGELOG.md`.
 - Local release creation requires `gh` to be installed and authenticated.
 
 Read `ARCHITECTURE.md` for deeper context.

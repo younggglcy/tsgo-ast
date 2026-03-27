@@ -7,7 +7,11 @@
     "build:wasm": "bash scripts/build.sh",
     "build:js": "rolldown -c",
     "build": "bun run build:wasm && bun run build:js",
-    "test:release": "bun test scripts/release-lib.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "test:go": "go test ./...",
+    "test:js": "bun test scripts/release-lib.test.mjs",
+    "test:release": "bun run test:js",
+    "check": "bun run typecheck && bun run test:js && bun run test:go && bun run build",
     "release:pr": "node scripts/release-pr.mjs",
     "release": "bun run build && cd npm && npm publish --provenance --access public"
   },
