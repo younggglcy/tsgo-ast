@@ -6,6 +6,7 @@ import (
 	"github.com/microsoft/typescript-go/shim/ast"
 	"github.com/microsoft/typescript-go/shim/core"
 	"github.com/microsoft/typescript-go/shim/parser"
+	"github.com/microsoft/typescript-go/shim/scanner"
 	"github.com/microsoft/typescript-go/shim/tspath"
 	"github.com/younggglcy/tsgo-ast/goast"
 )
@@ -15,6 +16,24 @@ func parseSource(code string) *ast.SourceFile {
 		FileName: "/test.tsx",
 		Path:     tspath.Path("/test.tsx"),
 	}, code, core.ScriptKindTSX)
+}
+
+func mustNodeMap(t *testing.T, value any, message string) map[string]any {
+	t.Helper()
+	node, ok := value.(map[string]any)
+	if !ok {
+		t.Fatal(message)
+	}
+	return node
+}
+
+func mustNodeSlice(t *testing.T, value any, message string) []any {
+	t.Helper()
+	nodes, ok := value.([]any)
+	if !ok {
+		t.Fatal(message)
+	}
+	return nodes
 }
 
 func TestSerializerLocField(t *testing.T) {
@@ -43,14 +62,8 @@ func TestSerializerFlagsField(t *testing.T) {
 	if !ok || len(stmts) == 0 {
 		t.Fatal("expected Statements")
 	}
-	varStmt, ok := stmts[0].(map[string]any)
-	if !ok {
-		t.Fatal("expected map for first statement")
-	}
-	declList, ok := varStmt["DeclarationList"].(map[string]any)
-	if !ok {
-		t.Fatal("expected DeclarationList")
-	}
+	varStmt := mustNodeMap(t, stmts[0], "expected map for first statement")
+	declList := mustNodeMap(t, varStmt["DeclarationList"], "expected DeclarationList")
 	flags, ok := declList["flags"].([]string)
 	if !ok {
 		t.Fatal("expected flags on VariableDeclarationList for const")
@@ -75,20 +88,157 @@ func TestSerializerComments(t *testing.T) {
 	if !ok || len(stmts) == 0 {
 		t.Fatal("expected Statements")
 	}
-	varStmt, ok := stmts[0].(map[string]any)
-	if !ok {
-		t.Fatal("expected map for first statement")
-	}
+	varStmt := mustNodeMap(t, stmts[0], "expected map for first statement")
 	leading, ok := varStmt["leadingComments"].([]any)
 	if !ok || len(leading) == 0 {
 		t.Fatal("expected leadingComments on statement after comment")
 	}
-	comment, ok := leading[0].(map[string]any)
-	if !ok {
-		t.Fatal("expected comment map")
-	}
+	comment := mustNodeMap(t, leading[0], "expected comment map")
 	if comment["type"] != "line" {
 		t.Errorf("expected comment type 'line', got %v", comment["type"])
+	}
+}
+
+func TestSerializerIncludesFunctionLikeBaseFields(t *testing.T) {
+	sf := parseSource(`const fn = (value: number) => value + 1`)
+	s := goast.NewSerializer(sf)
+	result := s.SerializeNode(sf.AsNode())
+
+	statements := mustNodeSlice(t, result["Statements"], "expected Statements")
+	varStmt := mustNodeMap(t, statements[0], "expected variable statement")
+	declList := mustNodeMap(t, varStmt["DeclarationList"], "expected DeclarationList")
+	declarations := mustNodeSlice(t, declList["Declarations"], "expected Declarations")
+	decl := mustNodeMap(t, declarations[0], "expected declaration")
+	arrowFn := mustNodeMap(t, decl["Initializer"], "expected arrow function initializer")
+
+	if arrowFn["Kind"] != "KindArrowFunction" {
+		t.Fatalf("expected KindArrowFunction, got %v", arrowFn["Kind"])
+	}
+	parameters := mustNodeSlice(t, arrowFn["Parameters"], "expected Parameters on arrow function")
+	if len(parameters) != 1 {
+		t.Fatalf("expected 1 parameter, got %d", len(parameters))
+	}
+	parameter := mustNodeMap(t, parameters[0], "expected parameter node")
+	if _, ok := arrowFn["Body"].(map[string]any); !ok {
+		t.Fatalf("expected Body on arrow function, got %T", arrowFn["Body"])
+	}
+	if _, ok := parameter["Type"].(map[string]any); !ok {
+		t.Fatalf("expected parameter Type, got %T", parameter["Type"])
+	}
+}
+
+func TestSerializerIncludesClassLikeBaseFields(t *testing.T) {
+	sf := parseSource(`class Foo extends Bar { x = 1 }`)
+	s := goast.NewSerializer(sf)
+	result := s.SerializeNode(sf.AsNode())
+
+	statements := mustNodeSlice(t, result["Statements"], "expected Statements")
+	classDecl := mustNodeMap(t, statements[0], "expected class declaration")
+
+	if classDecl["Kind"] != "KindClassDeclaration" {
+		t.Fatalf("expected KindClassDeclaration, got %v", classDecl["Kind"])
+	}
+	heritage := mustNodeSlice(t, classDecl["HeritageClauses"], "expected HeritageClauses")
+	if len(heritage) != 1 {
+		t.Fatalf("expected 1 heritage clause, got %d", len(heritage))
+	}
+	members := mustNodeSlice(t, classDecl["Members"], "expected Members")
+	if len(members) != 1 {
+		t.Fatalf("expected 1 class member, got %d", len(members))
+	}
+}
+
+func TestSerializerUsesUTF16Offsets(t *testing.T) {
+	code := `const skull = "💀"; const next = 1`
+	sf := parseSource(code)
+	s := goast.NewSerializer(sf)
+	result := s.SerializeNode(sf.AsNode())
+
+	statements := mustNodeSlice(t, result["Statements"], "expected Statements")
+	if len(statements) != 2 {
+		t.Fatalf("expected 2 statements, got %d", len(statements))
+	}
+
+	secondStmt := mustNodeMap(t, statements[1], "expected second statement")
+	declList := mustNodeMap(t, secondStmt["DeclarationList"], "expected DeclarationList")
+	declarations := mustNodeSlice(t, declList["Declarations"], "expected Declarations")
+	decl := mustNodeMap(t, declarations[0], "expected declaration")
+	name := mustNodeMap(t, decl["Name"], "expected Name node")
+	loc := mustNodeMap(t, name["loc"], "expected Name.loc")
+	nameNode := sf.Statements.Nodes[1].
+		AsVariableStatement().
+		DeclarationList.
+		AsVariableDeclarationList().
+		Declarations.Nodes[0].
+		AsVariableDeclaration().
+		Name()
+
+	byteStart := nameNode.Pos()
+	byteEnd := nameNode.End()
+	expectedLine, expectedStartColumn := scanner.GetECMALineAndUTF16CharacterOfPosition(sf, byteStart)
+	expectedEndLine, expectedEndColumn := scanner.GetECMALineAndUTF16CharacterOfPosition(sf, byteEnd)
+	_, byteStartColumn := scanner.GetECMALineAndByteOffsetOfPosition(sf, byteStart)
+
+	expectedStart := s.EncodeOffset(byteStart)
+	expectedEnd := s.EncodeOffset(byteEnd)
+
+	if name["start"] != expectedStart {
+		t.Fatalf("expected UTF-16 start %d, got %v", expectedStart, name["start"])
+	}
+	if name["end"] != expectedEnd {
+		t.Fatalf("expected UTF-16 end %d, got %v", expectedEnd, name["end"])
+	}
+	if int(expectedStartColumn) == byteStartColumn {
+		t.Fatal("expected UTF-16 and byte columns to differ for unicode source")
+	}
+	if loc["startLine"] != expectedLine {
+		t.Fatalf("expected startLine %d, got %v", expectedLine, loc["startLine"])
+	}
+	if loc["startColumn"] != int(expectedStartColumn) {
+		t.Fatalf("expected UTF-16 startColumn %d, got %v", expectedStartColumn, loc["startColumn"])
+	}
+	if loc["endLine"] != expectedEndLine {
+		t.Fatalf("expected endLine %d, got %v", expectedEndLine, loc["endLine"])
+	}
+	if loc["endColumn"] != int(expectedEndColumn) {
+		t.Fatalf("expected UTF-16 endColumn %d, got %v", expectedEndColumn, loc["endColumn"])
+	}
+}
+
+func TestSerializerCommentOffsetsUseUTF16(t *testing.T) {
+	code := `const skull = "💀"; // note`
+	sf := parseSource(code)
+	s := goast.NewSerializer(sf)
+	result := s.SerializeNode(sf.AsNode())
+
+	statements := mustNodeSlice(t, result["Statements"], "expected Statements")
+	statement := mustNodeMap(t, statements[0], "expected statement")
+	trailing := mustNodeSlice(t, statement["trailingComments"], "expected trailingComments")
+	comment := mustNodeMap(t, trailing[0], "expected comment map")
+	var rawStart, rawEnd int
+	found := false
+	for cr := range scanner.GetTrailingCommentRanges(ast.NewNodeFactory(ast.NodeFactoryHooks{}), code, sf.Statements.Nodes[0].End()) {
+		rawStart = cr.Pos()
+		rawEnd = cr.End()
+		found = true
+		break
+	}
+	if !found {
+		t.Fatal("expected trailing comment range")
+	}
+	expectedStart := s.EncodeOffset(rawStart)
+	expectedEnd := s.EncodeOffset(rawEnd)
+	_, byteStartColumn := scanner.GetECMALineAndByteOffsetOfPosition(sf, rawStart)
+	_, utf16StartColumn := scanner.GetECMALineAndUTF16CharacterOfPosition(sf, rawStart)
+
+	if comment["start"] != expectedStart {
+		t.Fatalf("expected UTF-16 comment start %d, got %v", expectedStart, comment["start"])
+	}
+	if comment["end"] != expectedEnd {
+		t.Fatalf("expected UTF-16 comment end %d, got %v", expectedEnd, comment["end"])
+	}
+	if byteStartColumn == int(utf16StartColumn) {
+		t.Fatal("expected comment UTF-16 and byte columns to differ for unicode source")
 	}
 }
 
