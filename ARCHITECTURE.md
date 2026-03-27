@@ -1,187 +1,281 @@
 ---
-based_on: fa82667c40cf68131a6becbd02038a2957b44a80  # main: Initial commit
-last_updated: 2026-03-19
+last_updated: 2026-03-27
 ---
 
 # Architecture
 
-`tsgo-ast` exposes Microsoft's [typescript-go](https://github.com/nicolo-ribaudo/tc39-proposal-structs) (TypeScript 7, Project Corsa) parser to JavaScript/TypeScript via WebAssembly. Consumers call `parseAST(code, lang)` and receive a JSON tree whose node types mirror the Go-side `ast.Kind` names.
+`tsgo-ast` exposes the Go-based `typescript-go` parser to JavaScript and TypeScript through WebAssembly. The public API is intentionally small: callers first `await initGoAst()` to initialize the Go WASM runtime, then use the synchronous `parseAST(code, lang)` API to obtain an enriched JSON AST.
+
+The current implementation is optimized around three goals:
+
+- Keep the JavaScript-facing API thin so Go / WASM details do not leak into consumers
+- Preserve as much structure from `typescript-go` as possible while adding locations, comments, and flags that JS tooling expects
+- Keep all publishable artifacts under `npm/` so local builds, CI releases, and package contents stay aligned
 
 ## High-Level Data Flow
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│  JavaScript Runtime (Browser / Node.js / Bun / Deno)             │
-│                                                                  │
-│  import { initGoAst, parseAST } from "tsgo-ast"                 │
-│                                                                  │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │  npm package (tsgo-ast)                                    │  │
-│  │                                                            │  │
-│  │  index.js          ← TypeScript API wrapper (ESM)          │  │
-│  │  wasm_exec.js      ← Go WASM runtime glue (from GOROOT)   │  │
-│  │  tsgo-ast.wasm     ← compiled Go → WASM binary            │  │
-│  └────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
-                              │
-                    WebAssembly boundary
-                              │
-                              ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  WASM Module (Go)                                                │
-│                                                                  │
-│  cmd/wasm/main.go                                                │
-│    ├─ registers global `goParseAST(code, lang)` via syscall/js   │
-│    ├─ maps lang → ScriptKind / fileName                          │
-│    └─ blocks forever with `select{}`                             │
-│                                                                  │
-│  goast/serialize.go                                              │
-│    ├─ SerializeNode()  → recursive AST node → map[string]any    │
-│    ├─ reflect-based struct field extraction                      │
-│    └─ filters base types & internal metadata                     │
-│                                                                  │
-│  goast/concrete.go                                               │
-│    ├─ GetConcreteValue()  → Kind → As*() dispatch (400+ cases)  │
-│    └─ KindName()  → strips "Kind" prefix for display            │
-│                                                                  │
-│  typescript-go (via tsgolint submodule)                          │
-│    ├─ parser.ParseSourceFile()                                   │
-│    ├─ ast.Node / ast.Kind / As*() methods                        │
-│    └─ shim packages: ast, core, parser, tspath                   │
-└──────────────────────────────────────────────────────────────────┘
+```text
+source code string
+  │
+  ▼
+`src/index.ts`
+  ├─ `initGoAst(wasmUrl?)`
+  │    ├─ dynamically loads `wasm_exec.js`
+  │    ├─ creates `new Go()`
+  │    ├─ fetches and instantiates `tsgo-ast.wasm`
+  │    └─ starts the Go runtime with `go.run(instance)`
+  │
+  └─ `parseAST(code, lang)`
+       └─ calls global `goParseAST(code, lang)`
+                │
+                ▼
+        `cmd/wasm/main.go`
+          ├─ maps `lang` to `core.ScriptKind`
+          ├─ maps `lang` to a virtual file name
+          ├─ calls `parser.ParseSourceFile(...)`
+          ├─ creates `goast.NewSerializer(sourceFile)`
+          ├─ runs `serializer.SerializeNode(sourceFile.AsNode())`
+          ├─ collects diagnostics
+          └─ returns `json.Marshal(...)` + `JSON.parse(...)`
+                │
+                ▼
+      `ParseResult { offsetEncoding, ast, errors, sourceFileInfo }`
 ```
 
 ## Directory Structure
 
-```
+```text
 tsgo-ast/
-├── cmd/wasm/              # WASM entry point (Go)
-│   └── main.go            #   registers goParseAST, handles JS ↔ Go interop
-├── goast/                 # AST serialization layer (Go)
-│   ├── concrete.go        #   Kind → concrete struct dispatch
-│   └── serialize.go       #   recursive node → JSON-friendly map
-├── src/                   # TypeScript API source
-│   ├── index.ts           #   public API: initGoAst, parseAST, isInitialized
-│   └── wasm_exec.js.d.ts  #   type declarations for Go WASM glue
-├── npm/                   # published package output (build artifacts)
-│   └── package.json       #   npm metadata (name, version, exports)
+├── cmd/wasm/
+│   └── main.go              # JS ↔ Go bridge, registers goParseAST
+├── goast/
+│   ├── comments.go          # leading / trailing comment extraction
+│   ├── concrete.go          # ast.Kind → As*() dispatch
+│   ├── flags.go             # node flag decoding
+│   ├── serialize.go         # shared reflection-based traversal and skip rules
+│   ├── serializer.go        # SourceFile-aware enriched serializer
+│   └── serializer_test.go   # serializer behavior tests
+├── src/
+│   ├── index.ts             # public JS/TS API
+│   └── wasm_exec.js.d.ts    # type declarations for Go WASM glue
 ├── scripts/
-│   └── build.sh           #   Go → WASM compilation script
-├── tsgolint/              # git submodule → oxc-project/tsgolint
-│   └── (contains typescript-go + shim packages)
-├── go.mod                 # Go module with `replace` directives to submodule
-├── package.json           # dev-only: build scripts, devDependencies
-├── rolldown.config.ts     # Rolldown bundler config (src → npm)
-├── tsconfig.json          # TypeScript config (declaration emit)
-└── .github/workflows/
-    └── release.yml        # tag-triggered CI: build + npm publish
+│   ├── build.sh             # builds wasm and copies wasm_exec.js into npm/
+│   ├── release-lib.mjs      # release helper logic
+│   └── release-pr.mjs       # release PR generator
+├── npm/                     # publish root; final artifacts live here
+│   └── package.json
+├── tsgolint/                # required submodule that vendors typescript-go and shim packages
+├── ARCHITECTURE.md
+├── README.md
+├── go.mod
+├── package.json
+└── rolldown.config.ts
 ```
 
-## Key Components
+## Runtime Boundary
 
-### 1. WASM Entry Point — `cmd/wasm/main.go`
+### TypeScript side — `src/index.ts`
 
-Build-tagged `//go:build js && wasm`. Registers a single global function `goParseAST(code, lang)` on the JS `globalThis`. The function:
+`src/index.ts` compresses the runtime model into three exports:
 
-1. Converts `lang` string (`ts`/`tsx`/`js`/`jsx`) to `core.ScriptKind` and a virtual filename
-2. Calls `parser.ParseSourceFile()` from typescript-go
-3. Serializes the resulting AST via `goast.SerializeNode()`
-4. Collects diagnostics from `sourceFile.Diagnostics()`
-5. Returns `{ ast, errors }` as a JS object (via `JSON.parse` on the JS side)
+- `initGoAst(wasmUrl?)`
+  - Uses lazy singleton initialization backed by `initPromise`
+  - Dynamically imports `./wasm_exec.js`
+  - Prefers `WebAssembly.instantiateStreaming()`
+  - Falls back to `arrayBuffer()` + `WebAssembly.instantiate()`
+- `parseAST(code, lang)`
+  - Performs light argument forwarding only
+  - Requires the caller to finish `await initGoAst()` first
+  - Delegates actual parsing to the global `goParseAST`
+- `isInitialized()`
+  - Only reports whether initialization has started, not whether the runtime is fully ready
 
-Panic recovery wraps the entire parse path to prevent WASM crashes from surfacing as unhandled errors.
+Two design choices matter here:
 
-### 2. Serialization Layer — `goast/`
+1. **Parsing stays synchronous.** Initialization is async, but once the runtime is ready, parsing uses a synchronous API to keep consumer code simple.
+2. **Runtime failures do not leak as unhandled rejections.** `go.run(...)` is not awaited; instead it is wrapped in `.catch(...)` because Go `main()` blocks forever in `select {}`.
 
-**`serialize.go`** — Recursive conversion of `*ast.Node` → `map[string]any`:
+### Go side — `cmd/wasm/main.go`
 
-- Each node gets `{ type, start, end }` plus all exported struct fields
-- Uses Go `reflect` to walk struct fields dynamically
-- Filters out:
-  - Base type embeddings (`NodeBase`, `StatementBase`, `ExpressionBase`, etc.)
-  - Internal metadata fields (`EndOfFileToken`, `NodeCount`, `ScriptKind`, etc.)
-- Special handling for `Name()`, `Modifiers()`, identifier text, and literal text
-- Handles `*ast.Node`, `*ast.NodeList`, `*ast.ModifierList`, and `[]*ast.Node` field types
+`cmd/wasm/main.go` is the single WASM entry point, with a deliberately narrow responsibility set:
 
-**`concrete.go`** — Type dispatch via `GetConcreteValue()`:
+1. Map `lang` to `core.ScriptKind`
+2. Generate a matching virtual file name
+3. Call `parser.ParseSourceFile(...)`
+4. Create `goast.NewSerializer(sourceFile)`
+5. Serialize the `SourceFile` root node
+6. Collect `sourceFile.Diagnostics()`
+7. Build `sourceFileInfo`
+8. `json.Marshal` the result and convert it back with JS `JSON.parse`
 
-- Maps `ast.Kind` → the appropriate `As*()` method (400+ cases)
-- Covers all TypeScript AST node categories: identifiers, literals, expressions, statements, declarations, type nodes, JSX, JSDoc, clauses, class/type members, binding patterns
-- `KindName()` strips the `Kind` prefix for human-readable type names
+The project uses `json.Marshal` → `JSON.parse` instead of constructing a deep `js.Value` tree manually for two reasons:
 
-### 3. TypeScript API — `src/index.ts`
+- The serialized shape is large and deeply nested, so manual JS bridge code is harder to maintain correctly
+- The JSON path is more stable and makes it easier to keep Go and TypeScript result shapes aligned
 
-Public surface:
+The whole `parseAST` path is also wrapped with `recover()`, so a panic is downgraded into an `{ errors: [...] }` style result instead of crashing the WASM runtime for the caller.
 
-| Export | Description |
-|--------|-------------|
-| `initGoAst(wasmUrl?)` | Load WASM runtime (lazy singleton, safe to call concurrently) |
-| `parseAST(code, lang)` | Synchronous parse after init; returns `{ ast: GoAstNode, errors: string[] }` |
-| `isInitialized()` | Check if WASM runtime is ready |
+## Serialization Pipeline
 
-Initialization loads `wasm_exec.js` (Go's JS glue), fetches the `.wasm` binary, instantiates it with streaming (fallback to `arrayBuffer` for `file://` protocol), and starts the Go runtime without awaiting it (since `main()` blocks forever).
+`goast/` is the main domain layer of the repository. The design has evolved from a plain structural mirror into a structural mirror plus context-aware enrichments.
 
-### 4. typescript-go Dependency
+### `goast/serializer.go`
 
-The actual parser comes from Microsoft's typescript-go, accessed through the `tsgolint` git submodule (from `oxc-project/tsgolint`). The `go.mod` uses `replace` directives to point all `github.com/microsoft/typescript-go` imports to the local submodule paths:
+`Serializer` is bound to a single `*ast.SourceFile`, which gives it the context needed for richer output:
 
-- `shim/ast` — AST node types, `Kind` enum, `As*()` methods
-- `shim/core` — `ScriptKind`, diagnostics
-- `shim/parser` — `ParseSourceFile()`
-- `shim/tspath` — path handling utilities
+- `sf.Text()`
+- `scanner.GetECMALineStarts(sf)`
+- `ast.ComputePositionMap(text)`
+- A `NodeFactory` used for comment extraction
 
-## Build Pipeline
+That context allows it to add more than just common node fields:
 
-### Local Build
+- `loc`
+- `flags`
+- `leadingComments`
+- `trailingComments`
+- `text` for `Identifier` and literal-like nodes
+- additional data from `SourceFile` and shared base-node helpers
+
+One important invariant is that **all exported offsets use UTF-16**. `typescript-go` uses byte offsets internally, while JS/TS tooling typically works with UTF-16 code units, so `Serializer.EncodeOffset()` converts positions into UTF-16 offsets.
+
+### `goast/serialize.go`
+
+This file contains the low-level traversal logic that expands AST structures through reflection:
+
+- Walk exported fields on concrete node structs
+- Handle `*ast.Node`, `*ast.NodeList`, `*ast.ModifierList`, slices, and similar containers
+- Skip embedded base types and internal fields that should not be exposed to JS
+- Provide reusable structural traversal that `serializer.go` builds on top of
+
+A more accurate mental model today is:
+
+- `serialize.go` handles **generic structural traversal**
+- `serializer.go` handles **SourceFile-aware enriched output**
+
+### `goast/concrete.go`
+
+`GetConcreteValue()` dispatches on `ast.Kind` and calls the matching `As*()` method so the reflection layer can inspect the correct concrete struct. The dispatch table is long, but the responsibility is intentionally narrow: **make sure each Kind resolves to the right concrete type**.
+
+`KindName()` converts the underlying `Kind` name into the JS-facing `type` field.
+
+### `goast/comments.go` and `goast/flags.go`
+
+These files isolate enrichment-specific logic from the main serializer flow:
+
+- `comments.go` extracts leading and trailing comments
+- `flags.go` decodes bit flags into readable string arrays
+
+This split keeps `Serializer` as an orchestration layer instead of letting it grow into a monolithic file.
+
+## Result Shape
+
+The stable JS-facing result shape is:
+
+```ts
+interface ParseResult {
+  offsetEncoding: "utf-16";
+  ast: GoAstNode;
+  errors: string[] | null;
+  sourceFileInfo: {
+    isDeclarationFile: boolean;
+    pragmas: string[] | null;
+    referencedFiles: FileReference[] | null;
+    typeReferenceDirectives: FileReference[] | null;
+  };
+}
+```
+
+Compared with the earlier `{ ast, errors }` model, the current contract adds two important constraints:
+
+- `offsetEncoding` is part of the public protocol, not just an implementation detail
+- `sourceFileInfo` is a stable export of `SourceFile` metadata, so Go output and TS types must stay in sync
+
+That means any change to the result envelope, exported field names, or TypeScript declarations should be reviewed across all three layers together:
+
+- `src/index.ts`
+- `cmd/wasm/main.go`
+- `goast/*`
+
+## Build and Packaging
+
+### Local build
+
+The root `package.json` defines three core commands:
 
 ```bash
-bun run build          # full build (wasm + js)
-bun run build:wasm     # Go → WASM only
-bun run build:js       # TypeScript → JS + declarations only
+bun run build:wasm
+bun run build:js
+bun run build
 ```
 
-**WASM build** (`scripts/build.sh`):
-1. Copies `wasm_exec.js` from `$GOROOT/lib/wasm/` into `npm/`
-2. Compiles with `GOOS=js GOARCH=wasm go build -o npm/tsgo-ast.wasm ./cmd/wasm`
+The actual flow is:
 
-**JS build** (`bun run build:js`):
-1. Rolldown bundles `src/index.ts` → `npm/index.js` (ESM, `wasm_exec.js` marked external)
-2. `tsc --emitDeclarationOnly` generates `npm/index.d.ts`
+1. `scripts/build.sh`
+   - Copies runtime glue from `$(go env GOROOT)/lib/wasm/wasm_exec.js` to `npm/wasm_exec.js`
+   - Builds `npm/tsgo-ast.wasm` with `GOOS=js GOARCH=wasm`
+2. `rolldown.config.ts`
+   - Bundles `src/index.ts` into `npm/index.js`
+   - Uses `isolatedDeclarationPlugin()` to emit declaration output
+   - Marks `./wasm_exec.js` as external so the bundler does not inline it
 
-### CI/CD — `.github/workflows/release.yml`
+The publish root is `npm/`, not the repository root. That affects three maintenance rules:
 
-Triggered by `v*` tags. Steps:
-1. Checkout with recursive submodules
-2. Setup Go 1.26, Node.js 22, Bun
-3. `bun install` → `bash scripts/build.sh` → `bun run build:js`
-4. `cd npm && npm publish` (authenticated via `NPM_TOKEN` secret)
+- Build artifacts must land in `npm/`
+- `npm/package.json` `files` and `exports` must stay aligned with the build output
+- Any manual edit under `npm/` should be treated with suspicion until you confirm whether the file is generated
 
-## npm Package
+`npm/wasm_exec.js` in particular must never be edited by hand; it is always copied from the local Go installation.
 
-Published as `tsgo-ast` on npm. The `npm/` directory is the package root:
+## Release Flow
 
-```
-npm/
-├── package.json       # name, version, exports, sideEffects
-├── index.js           # bundled ESM entry
-├── index.d.ts         # TypeScript declarations
-├── wasm_exec.js       # Go WASM runtime (marked as sideEffect)
-└── tsgo-ast.wasm      # compiled WASM binary
-```
+The release process is not “push a tag and publish.” It is a two-stage flow:
 
-- ESM-only (`"type": "module"`)
-- Single export entry with types
-- `wasm_exec.js` declared as `sideEffects` to prevent tree-shaking (it mutates `globalThis`)
+1. On a clean local `main`, run `bun run release:pr <version>`
+   - Generate `CHANGELOG.md`
+   - Bump `npm/package.json`
+   - Push the `release/v<version>` branch
+   - Open the release PR
+2. After that release PR is merged into `main`, `.github/workflows/release.yml` is triggered by `push main`
+   - The workflow detects whether the merge is actually a release merge
+   - If yes, it runs `bun run build`
+   - Publishes the npm package
+   - Creates the git tag
+   - Creates the GitHub Release from `CHANGELOG.md`
 
-## Tech Stack
+So the current responsibility of `release.yml` is **final release execution after the merge lands on `main`**, not a simple tag-driven publish job.
 
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| Parser | [typescript-go](https://github.com/nicolo-ribaudo/tc39-proposal-structs) (Go 1.26) | TypeScript/JavaScript AST parsing |
-| WASM interop | `syscall/js` | Go ↔ JavaScript bridge |
-| Serialization | `encoding/json` + `reflect` | AST → JSON conversion |
-| Bundler | [Rolldown](https://rolldown.rs) | TypeScript → ESM bundle |
-| Type generation | TypeScript 5.9 | `.d.ts` declaration emit |
-| Package manager | [Bun](https://bun.sh) | Dependency management + script runner |
-| CI/CD | GitHub Actions | Tag-triggered npm publish |
-| Dependency | Git submodules | typescript-go via tsgolint |
+## External Dependency Layout
+
+This repository depends on the `tsgolint/` submodule for its `typescript-go` integration. The `go.mod` file uses `replace` directives to redirect these imports to local submodule paths:
+
+- `github.com/microsoft/typescript-go`
+- `github.com/microsoft/typescript-go/shim/ast`
+- `github.com/microsoft/typescript-go/shim/core`
+- `github.com/microsoft/typescript-go/shim/parser`
+- `github.com/microsoft/typescript-go/shim/tspath`
+- `github.com/microsoft/typescript-go/shim/scanner`
+
+That implies two practical constraints:
+
+- If submodules are not initialized, Go builds and tests will fail
+- When debugging parser behavior, prefer reading the local `tsgolint/` checkout before assuming remote docs match the pinned source
+
+## Maintenance Invariants
+
+These are the easiest invariants to break over time:
+
+1. **Go result shapes and TypeScript types must stay synchronized.**
+2. **`npm/` is the publish root, but most files there are generated artifacts.**
+3. **`npm/wasm_exec.js` may only be replaced by the build script.**
+4. **Enriched output must be produced through `goast.NewSerializer(sourceFile)`.**
+5. **All exported positions use UTF-16 encoding.**
+
+If the protocol keeps evolving, this is the safest review order:
+
+1. Does `src/index.ts` need new or updated TypeScript types?
+2. Does `cmd/wasm/main.go` need a changed result envelope?
+3. Does `goast/serializer.go` already have the context required to compute the new field?
+4. Does `goast/serializer_test.go` need new assertions?
+
+Following that order helps avoid a common maintenance failure mode: Go returns a new field, but TypeScript types and documentation still describe the old contract.
