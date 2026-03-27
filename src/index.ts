@@ -8,6 +8,7 @@ declare global {
 
 export interface GoAstNode {
   type: string;
+  Kind?: string;
   start: number;
   end: number;
   loc?: {
@@ -43,6 +44,7 @@ export interface FileReference {
 }
 
 export interface ParseResult {
+  offsetEncoding: "utf-16";
   ast: GoAstNode;
   errors: string[] | null;
   sourceFileInfo: SourceFileInfo;

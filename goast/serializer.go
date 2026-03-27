@@ -4,14 +4,18 @@ import (
 	"reflect"
 
 	"github.com/microsoft/typescript-go/shim/ast"
+	"github.com/microsoft/typescript-go/shim/core"
 	"github.com/microsoft/typescript-go/shim/scanner"
 )
 
 // Serializer converts AST nodes to maps with enriched metadata.
 type Serializer struct {
-	sf      *ast.SourceFile
-	text    string
-	factory *ast.NodeFactory
+	sf                   *ast.SourceFile
+	text                 string
+	factory              *ast.NodeFactory
+	lineStarts           []core.TextPos
+	positionMap          *ast.PositionMap
+	lineStartUTF16Offset []int
 }
 
 // NewSerializer creates a Serializer for the given SourceFile.
@@ -21,8 +25,42 @@ func NewSerializer(sf *ast.SourceFile) *Serializer {
 	if sf != nil {
 		s.text = sf.Text()
 		s.factory = ast.NewNodeFactory(ast.NodeFactoryHooks{})
+		s.lineStarts = scanner.GetECMALineStarts(sf)
+		s.positionMap = ast.ComputePositionMap(s.text)
+		s.lineStartUTF16Offset = make([]int, len(s.lineStarts))
+		for i, start := range s.lineStarts {
+			s.lineStartUTF16Offset[i] = s.positionMap.UTF8ToUTF16(int(start))
+		}
 	}
 	return s
+}
+
+// EncodeOffset converts a byte offset from typescript-go into a UTF-16 code unit offset.
+func (s *Serializer) EncodeOffset(pos int) int {
+	if s.positionMap == nil {
+		return pos
+	}
+	return s.positionMap.UTF8ToUTF16(pos)
+}
+
+type encodedPosition struct {
+	offset int
+	line   int
+	column int
+}
+
+func (s *Serializer) encodePosition(pos int) encodedPosition {
+	offset := s.EncodeOffset(pos)
+	if len(s.lineStarts) == 0 {
+		return encodedPosition{offset: offset}
+	}
+
+	line := scanner.ComputeLineOfPosition(s.lineStarts, pos)
+	return encodedPosition{
+		offset: offset,
+		line:   line,
+		column: offset - s.lineStartUTF16Offset[line],
+	}
 }
 
 // SerializeNode converts an AST node to a map with Go type names and enrichments.
@@ -31,21 +69,22 @@ func (s *Serializer) SerializeNode(node *ast.Node) map[string]any {
 		return nil
 	}
 
+	start := s.encodePosition(node.Pos())
+	end := s.encodePosition(node.End())
 	result := map[string]any{
 		"type":  KindName(node.Kind),
-		"start": node.Pos(),
-		"end":   node.End(),
+		"Kind":  node.KindString(),
+		"start": start.offset,
+		"end":   end.offset,
 	}
 
 	// Enrichment: line/column positions
 	if s.sf != nil {
-		startLine, startCol := scanner.GetECMALineAndByteOffsetOfPosition(s.sf, node.Pos())
-		endLine, endCol := scanner.GetECMALineAndByteOffsetOfPosition(s.sf, node.End())
 		result["loc"] = map[string]any{
-			"startLine":   startLine,
-			"startColumn": startCol,
-			"endLine":     endLine,
-			"endColumn":   endCol,
+			"startLine":   start.line,
+			"startColumn": start.column,
+			"endLine":     end.line,
+			"endColumn":   end.column,
 		}
 	}
 
@@ -56,10 +95,10 @@ func (s *Serializer) SerializeNode(node *ast.Node) map[string]any {
 
 	// Enrichment: comments
 	if s.factory != nil {
-		if leading := CollectLeadingComments(s.factory, s.text, node.Pos()); leading != nil {
+		if leading := CollectLeadingComments(s.factory, s.text, node.Pos(), s.EncodeOffset); leading != nil {
 			result["leadingComments"] = leading
 		}
-		if trailing := CollectTrailingComments(s.factory, s.text, node.End()); trailing != nil {
+		if trailing := CollectTrailingComments(s.factory, s.text, node.End(), s.EncodeOffset); trailing != nil {
 			result["trailingComments"] = trailing
 		}
 	}
@@ -75,6 +114,8 @@ func (s *Serializer) SerializeNode(node *ast.Node) map[string]any {
 			s.serializeStructFields(val, result)
 		}
 	}
+
+	s.enrichSharedBaseFields(node, result)
 
 	// Add Name if accessible and not already present
 	if _, hasName := result["Name"]; !hasName {
@@ -103,6 +144,44 @@ func (s *Serializer) SerializeNode(node *ast.Node) map[string]any {
 	}
 
 	return result
+}
+
+func (s *Serializer) enrichSharedBaseFields(node *ast.Node, result map[string]any) {
+	if classLike := node.ClassLikeData(); classLike != nil {
+		if _, hasTypeParameters := result["TypeParameters"]; !hasTypeParameters {
+			result["TypeParameters"] = s.serializeNodeList(classLike.TypeParameters)
+		}
+		if _, hasHeritageClauses := result["HeritageClauses"]; !hasHeritageClauses {
+			result["HeritageClauses"] = s.serializeNodeList(classLike.HeritageClauses)
+		}
+		if _, hasMembers := result["Members"]; !hasMembers {
+			result["Members"] = s.serializeNodeList(classLike.Members)
+		}
+	}
+
+	if functionLike := node.FunctionLikeData(); functionLike != nil {
+		if _, hasTypeParameters := result["TypeParameters"]; !hasTypeParameters {
+			result["TypeParameters"] = s.serializeNodeList(functionLike.TypeParameters)
+		}
+		if _, hasParameters := result["Parameters"]; !hasParameters {
+			result["Parameters"] = s.serializeNodeList(functionLike.Parameters)
+		}
+		if _, hasType := result["Type"]; !hasType && functionLike.Type != nil {
+			result["Type"] = s.SerializeNode(functionLike.Type)
+		}
+		if _, hasFullSignature := result["FullSignature"]; !hasFullSignature && functionLike.FullSignature != nil {
+			result["FullSignature"] = s.SerializeNode(functionLike.FullSignature)
+		}
+	}
+
+	if body := node.BodyData(); body != nil {
+		if _, hasAsteriskToken := result["AsteriskToken"]; !hasAsteriskToken && body.AsteriskToken != nil {
+			result["AsteriskToken"] = s.SerializeNode(body.AsteriskToken)
+		}
+		if _, hasBody := result["Body"]; !hasBody && body.Body != nil {
+			result["Body"] = s.SerializeNode(body.Body)
+		}
+	}
 }
 
 func (s *Serializer) serializeStructFields(val reflect.Value, result map[string]any) {

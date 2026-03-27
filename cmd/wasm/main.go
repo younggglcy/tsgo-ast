@@ -46,6 +46,7 @@ func langToFileName(lang string) string {
 
 func makeErrorResult(msg string) js.Value {
 	result := map[string]any{
+		"offsetEncoding": "utf-16",
 		"ast":            nil,
 		"errors":         []string{msg},
 		"sourceFileInfo": nil,
@@ -54,7 +55,7 @@ func makeErrorResult(msg string) js.Value {
 	return js.Global().Get("JSON").Call("parse", string(jsonBytes))
 }
 
-func serializeFileRefs(refs []*ast.FileReference) []any {
+func serializeFileRefs(refs []*ast.FileReference, serializer *goast.Serializer) []any {
 	if len(refs) == 0 {
 		return nil
 	}
@@ -62,8 +63,8 @@ func serializeFileRefs(refs []*ast.FileReference) []any {
 	for _, ref := range refs {
 		result = append(result, map[string]any{
 			"fileName": ref.FileName,
-			"start":    ref.Pos(),
-			"end":      ref.End(),
+			"start":    serializer.EncodeOffset(ref.Pos()),
+			"end":      serializer.EncodeOffset(ref.End()),
 		})
 	}
 	return result
@@ -80,12 +81,12 @@ func extractPragmas(sf *ast.SourceFile) []string {
 	return names
 }
 
-func buildSourceFileInfo(sf *ast.SourceFile) map[string]any {
+func buildSourceFileInfo(sf *ast.SourceFile, serializer *goast.Serializer) map[string]any {
 	return map[string]any{
 		"isDeclarationFile":       sf.IsDeclarationFile,
 		"pragmas":                 extractPragmas(sf),
-		"referencedFiles":         serializeFileRefs(sf.ReferencedFiles),
-		"typeReferenceDirectives": serializeFileRefs(sf.TypeReferenceDirectives),
+		"referencedFiles":         serializeFileRefs(sf.ReferencedFiles, serializer),
+		"typeReferenceDirectives": serializeFileRefs(sf.TypeReferenceDirectives, serializer),
 	}
 }
 
@@ -118,9 +119,10 @@ func parseAST(_ js.Value, args []js.Value) (ret any) {
 	}
 
 	result := map[string]any{
+		"offsetEncoding": "utf-16",
 		"ast":            astMap,
 		"errors":         errors,
-		"sourceFileInfo": buildSourceFileInfo(sourceFile),
+		"sourceFileInfo": buildSourceFileInfo(sourceFile, serializer),
 	}
 
 	jsonBytes, err := json.Marshal(result)
