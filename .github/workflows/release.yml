@@ -16,21 +16,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: recursive
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.26"
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          registry-url: "https://registry.npmjs.org"
-
-      - uses: oven-sh/setup-bun@v2
-
-      - name: Install dependencies
-        run: bun install
 
       - name: Detect release merge
         id: detect_release
@@ -38,7 +23,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          VERSION="$(node -p "JSON.parse(require('fs').readFileSync('npm/package.json', 'utf8')).version")"
+          VERSION="$(python3 - <<'PY'
+          import json
+
+          with open('npm/package.json', encoding='utf-8') as file:
+              print(json.load(file)['version'])
+          PY
+          )"
           TAG="v${VERSION}"
           PARENT_COUNT="$(git rev-list --parents -n 1 HEAD | awk '{print NF - 1}')"
 
@@ -68,6 +59,28 @@ jobs:
             echo "version=${VERSION}"
             echo "tag=${TAG}"
           } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        if: steps.detect_release.outputs.should_release == 'true'
+        with:
+          go-version: "1.26"
+
+      - uses: actions/setup-node@v4
+        if: steps.detect_release.outputs.should_release == 'true'
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.detect_release.outputs.should_release == 'true'
+
+      - name: Initialize submodules
+        if: steps.detect_release.outputs.should_release == 'true'
+        run: git submodule update --init --recursive
+
+      - name: Install dependencies
+        if: steps.detect_release.outputs.should_release == 'true'
+        run: bun install
 
       - name: Build package
         if: steps.detect_release.outputs.should_release == 'true'
