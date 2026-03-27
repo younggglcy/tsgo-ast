@@ -1,7 +1,7 @@
 {
   "name": "tsgo-ast",
   "version": "0.1.0",
-  "description": "TypeScript AST parser using Go's typescript-go, compiled to WebAssembly",
+  "description": "Expose the Go-based typescript-go parser to JavaScript and TypeScript through WebAssembly",
   "type": "module",
   "exports": {
     ".": {
@@ -16,10 +16,22 @@
     "tsgo-ast.wasm"
   ],
   "sideEffects": ["./wasm_exec.js"],
-  "keywords": ["typescript", "ast", "go", "wasm", "parser"],
+  "keywords": [
+    "typescript",
+    "javascript",
+    "ast",
+    "parser",
+    "typescript-go",
+    "wasm",
+    "webassembly"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/younggglcy/tsgo-ast.git"
+  },
+  "homepage": "https://github.com/younggglcy/tsgo-ast#readme",
+  "bugs": {
+    "url": "https://github.com/younggglcy/tsgo-ast/issues"
   }
 }
