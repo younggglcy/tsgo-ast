@@ -13,6 +13,8 @@ type Serializer struct {
 	sf                   *ast.SourceFile
 	text                 string
 	factory              *ast.NodeFactory
+	lineStarts           []core.TextPos
+	positionMap          *ast.PositionMap
 	lineStartUTF16Offset []int
 }
 
@@ -23,20 +25,11 @@ func NewSerializer(sf *ast.SourceFile) *Serializer {
 	if sf != nil {
 		s.text = sf.Text()
 		s.factory = ast.NewNodeFactory(ast.NodeFactoryHooks{})
-		lineStarts := scanner.GetECMALineStarts(sf)
-		s.lineStartUTF16Offset = make([]int, len(lineStarts))
-		prevBytePos := 0
-		prevUTF16Offset := 0
-		for i, start := range lineStarts {
-			bytePos := int(start)
-			if i == 0 {
-				s.lineStartUTF16Offset[i] = 0
-				prevBytePos = bytePos
-				continue
-			}
-			prevUTF16Offset += int(core.UTF16Len(s.text[prevBytePos:bytePos]))
-			s.lineStartUTF16Offset[i] = prevUTF16Offset
-			prevBytePos = bytePos
+		s.lineStarts = scanner.GetECMALineStarts(sf)
+		s.positionMap = ast.ComputePositionMap(s.text)
+		s.lineStartUTF16Offset = make([]int, len(s.lineStarts))
+		for i, start := range s.lineStarts {
+			s.lineStartUTF16Offset[i] = s.positionMap.UTF8ToUTF16(int(start))
 		}
 	}
 	return s
@@ -44,11 +37,30 @@ func NewSerializer(sf *ast.SourceFile) *Serializer {
 
 // EncodeOffset converts a byte offset from typescript-go into a UTF-16 code unit offset.
 func (s *Serializer) EncodeOffset(pos int) int {
-	if s.sf == nil {
+	if s.positionMap == nil {
 		return pos
 	}
-	line, column := scanner.GetECMALineAndUTF16CharacterOfPosition(s.sf, pos)
-	return s.lineStartUTF16Offset[line] + int(column)
+	return s.positionMap.UTF8ToUTF16(pos)
+}
+
+type encodedPosition struct {
+	offset int
+	line   int
+	column int
+}
+
+func (s *Serializer) encodePosition(pos int) encodedPosition {
+	offset := s.EncodeOffset(pos)
+	if len(s.lineStarts) == 0 {
+		return encodedPosition{offset: offset}
+	}
+
+	line := scanner.ComputeLineOfPosition(s.lineStarts, pos)
+	return encodedPosition{
+		offset: offset,
+		line:   line,
+		column: offset - s.lineStartUTF16Offset[line],
+	}
 }
 
 // SerializeNode converts an AST node to a map with Go type names and enrichments.
@@ -57,22 +69,22 @@ func (s *Serializer) SerializeNode(node *ast.Node) map[string]any {
 		return nil
 	}
 
+	start := s.encodePosition(node.Pos())
+	end := s.encodePosition(node.End())
 	result := map[string]any{
 		"type":  KindName(node.Kind),
 		"Kind":  node.KindString(),
-		"start": s.EncodeOffset(node.Pos()),
-		"end":   s.EncodeOffset(node.End()),
+		"start": start.offset,
+		"end":   end.offset,
 	}
 
 	// Enrichment: line/column positions
 	if s.sf != nil {
-		startLine, startCol := scanner.GetECMALineAndUTF16CharacterOfPosition(s.sf, node.Pos())
-		endLine, endCol := scanner.GetECMALineAndUTF16CharacterOfPosition(s.sf, node.End())
 		result["loc"] = map[string]any{
-			"startLine":   startLine,
-			"startColumn": int(startCol),
-			"endLine":     endLine,
-			"endColumn":   int(endCol),
+			"startLine":   start.line,
+			"startColumn": start.column,
+			"endLine":     end.line,
+			"endColumn":   end.column,
 		}
 	}
 

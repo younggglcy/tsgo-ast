@@ -1,6 +1,8 @@
 package goast_test
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/microsoft/typescript-go/shim/ast"
@@ -34,6 +36,17 @@ func mustNodeSlice(t *testing.T, value any, message string) []any {
 		t.Fatal(message)
 	}
 	return nodes
+}
+
+func buildLongSingleLineSource(repeat int) string {
+	var builder strings.Builder
+	builder.Grow(repeat * 24)
+	for i := range repeat {
+		builder.WriteString("const café")
+		builder.WriteString(strconv.Itoa(i))
+		builder.WriteString(` = "🎉";`)
+	}
+	return builder.String()
 }
 
 func TestSerializerLocField(t *testing.T) {
@@ -242,6 +255,56 @@ func TestSerializerCommentOffsetsUseUTF16(t *testing.T) {
 	}
 }
 
+func TestSerializerUsesUTF16OffsetsAcrossLines(t *testing.T) {
+	code := "const café = 1\nconst skull = \"💀\"\nconst next = 1"
+	sf := parseSource(code)
+	s := goast.NewSerializer(sf)
+	result := s.SerializeNode(sf.AsNode())
+
+	statements := mustNodeSlice(t, result["Statements"], "expected Statements")
+	if len(statements) != 3 {
+		t.Fatalf("expected 3 statements, got %d", len(statements))
+	}
+
+	thirdStmt := mustNodeMap(t, statements[2], "expected third statement")
+	declList := mustNodeMap(t, thirdStmt["DeclarationList"], "expected DeclarationList")
+	declarations := mustNodeSlice(t, declList["Declarations"], "expected Declarations")
+	decl := mustNodeMap(t, declarations[0], "expected declaration")
+	name := mustNodeMap(t, decl["Name"], "expected Name node")
+	loc := mustNodeMap(t, name["loc"], "expected Name.loc")
+	nameNode := sf.Statements.Nodes[2].
+		AsVariableStatement().
+		DeclarationList.
+		AsVariableDeclarationList().
+		Declarations.Nodes[0].
+		AsVariableDeclaration().
+		Name()
+
+	byteStart := nameNode.Pos()
+	byteEnd := nameNode.End()
+	expectedLine, expectedStartColumn := scanner.GetECMALineAndUTF16CharacterOfPosition(sf, byteStart)
+	expectedEndLine, expectedEndColumn := scanner.GetECMALineAndUTF16CharacterOfPosition(sf, byteEnd)
+
+	if name["start"] != s.EncodeOffset(byteStart) {
+		t.Fatalf("expected UTF-16 start %d, got %v", s.EncodeOffset(byteStart), name["start"])
+	}
+	if name["end"] != s.EncodeOffset(byteEnd) {
+		t.Fatalf("expected UTF-16 end %d, got %v", s.EncodeOffset(byteEnd), name["end"])
+	}
+	if loc["startLine"] != expectedLine {
+		t.Fatalf("expected startLine %d, got %v", expectedLine, loc["startLine"])
+	}
+	if loc["startColumn"] != int(expectedStartColumn) {
+		t.Fatalf("expected startColumn %d, got %v", expectedStartColumn, loc["startColumn"])
+	}
+	if loc["endLine"] != expectedEndLine {
+		t.Fatalf("expected endLine %d, got %v", expectedEndLine, loc["endLine"])
+	}
+	if loc["endColumn"] != int(expectedEndColumn) {
+		t.Fatalf("expected endColumn %d, got %v", expectedEndColumn, loc["endColumn"])
+	}
+}
+
 func TestSerializerBackwardCompat(t *testing.T) {
 	sf := parseSource("const x = 1")
 	result := goast.SerializeNode(sf.AsNode())
@@ -253,5 +316,21 @@ func TestSerializerBackwardCompat(t *testing.T) {
 	}
 	if _, hasLoc := result["loc"]; hasLoc {
 		t.Error("package-level SerializeNode should not produce loc without sf")
+	}
+}
+
+func BenchmarkSerializerLongSingleLineUTF16Offsets(b *testing.B) {
+	code := buildLongSingleLineSource(4000)
+	sf := parseSource(code)
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(code)))
+	b.ResetTimer()
+
+	for range b.N {
+		serializer := goast.NewSerializer(sf)
+		if got := serializer.SerializeNode(sf.AsNode()); got == nil {
+			b.Fatal("expected serialized source file")
+		}
 	}
 }
