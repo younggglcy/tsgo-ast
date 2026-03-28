@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { normalizeExecOutput } from "./release-pr-lib.mjs";
 import {
   prependChangelogEntry,
   validateVersion,
@@ -28,11 +29,12 @@ function fail(message) {
 }
 
 function run(command, args, options = {}) {
-  return execFileSync(command, args, {
+  const output = execFileSync(command, args, {
     cwd: rootDir,
     encoding: "utf8",
     stdio: options.stdio ?? ["ignore", "pipe", "pipe"],
-  }).trim();
+  });
+  return normalizeExecOutput(output);
 }
 
 function runAllowFailure(command, args, options = {}) {

@@ -9,7 +9,7 @@
     "build": "bun run build:wasm && bun run build:js",
     "typecheck": "tsc --noEmit",
     "test:go": "go test ./...",
-    "test:js": "bun test scripts/release-lib.test.mjs",
+    "test:js": "bun test scripts/*.test.mjs",
     "test:release": "bun run test:js",
     "check": "bun run typecheck && bun run test:js && bun run test:go && bun run build",
     "release:pr": "node scripts/release-pr.mjs",
