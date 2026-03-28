@@ -91,7 +91,7 @@ jobs:
         with:
           go-version: "1.26"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         if: steps.detect_release.outputs.should_release == 'true'
         with:
           node-version: "22"
