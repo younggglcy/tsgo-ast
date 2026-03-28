@@ -16,7 +16,7 @@ At a high level, the repository turns `typescript-go` parser output into a JS-fr
 
 1. `src/index.ts` exposes a small JavaScript API
 2. `cmd/wasm/main.go` bridges JavaScript and Go in a WASM runtime
-3. `goast/` serializes `typescript-go` AST nodes into JSON-friendly objects
+3. `goast/` owns the parse pipeline and serializes `typescript-go` AST nodes into JSON-friendly objects
 4. `scripts/build.sh` and `rolldown.config.ts` produce the final npm package under `npm/`
 
 The result is a package that lets JS/TS consumers call `initGoAst()` once and then parse source text synchronously with `parseAST(code, lang)`.
@@ -41,8 +41,8 @@ The runtime path is intentionally narrow:
 
 - `initGoAst()` loads `wasm_exec.js`, fetches `tsgo-ast.wasm`, and starts the Go runtime
 - `parseAST(code, lang)` calls the global `goParseAST` function registered by the WASM entry point
-- `cmd/wasm/main.go` parses source text with `typescript-go`
-- `goast.NewSerializer(sourceFile)` turns the Go AST into a JSON-friendly structure with enrichments such as:
+- `cmd/wasm/main.go` extracts JS arguments, delegates to `goast.Parse(code, lang)`, and bridges the result back through `JSON.parse(...)`
+- `goast.Parse(code, lang)` parses source text, builds `sourceFileInfo`, and uses `goast.NewSerializer(sourceFile)` to turn the Go AST into a JSON-friendly structure with enrichments such as:
   - UTF-16 offsets
   - line / column locations
   - node flags
@@ -71,6 +71,7 @@ bun install
 ```bash
 bun run build
 go test ./...
+bun run bench
 ```
 
 What those commands do:
@@ -82,6 +83,10 @@ What those commands do:
   - emits declaration output for the published package
 - `go test ./...`
   - runs serializer and Go-side behavior tests
+- `bun run bench`
+  - rebuilds the package
+  - initializes the WASM runtime once
+  - measures steady-state end-to-end `parseAST()` performance across representative fixtures
 
 ## Publish Model
 
