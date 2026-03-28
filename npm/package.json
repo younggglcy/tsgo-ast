@@ -30,7 +30,8 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/younggglcy/tsgo-ast.git"
+    "url": "git+https://github.com/younggglcy/tsgo-ast.git",
+    "directory": "npm"
   },
   "homepage": "https://github.com/younggglcy/tsgo-ast#readme",
   "bugs": {
