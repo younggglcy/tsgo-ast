@@ -9,6 +9,12 @@ export function validateVersion(version) {
   return version;
 }
 
+export function isReleaseCommitSubject(subject, tag) {
+  const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^release: ${escapedTag}( \\(#\\d+\\))?$`);
+  return pattern.test(subject);
+}
+
 export function renderChangelogEntry({ version, date, commits }) {
   if (!Array.isArray(commits) || commits.length === 0) {
     throw new Error("Release changelog requires at least one commit");

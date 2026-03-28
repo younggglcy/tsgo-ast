@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   extractReleaseNotes,
+  isReleaseCommitSubject,
   prependChangelogEntry,
   validateVersion,
 } from "./release-lib.mjs";
@@ -76,5 +77,19 @@ describe("extractReleaseNotes", () => {
 
     expect(extractReleaseNotes(changelog, "0.2.0")).toBe(`- feat: add release pipeline
 - fix: tighten workflow gating`);
+  });
+});
+
+describe("isReleaseCommitSubject", () => {
+  test("matches an exact release commit subject", () => {
+    expect(isReleaseCommitSubject("release: v0.2.0", "v0.2.0")).toBe(true);
+  });
+
+  test("matches a squash-merge release subject with PR suffix", () => {
+    expect(isReleaseCommitSubject("release: v0.2.0 (#10)", "v0.2.0")).toBe(true);
+  });
+
+  test("rejects unrelated subjects", () => {
+    expect(isReleaseCommitSubject("fix: release helper", "v0.2.0")).toBe(false);
   });
 });
