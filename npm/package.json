@@ -1,6 +1,6 @@
 {
   "name": "tsgo-ast",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Expose the Go-based typescript-go parser to JavaScript and TypeScript through WebAssembly",
   "type": "module",
   "exports": {
@@ -15,7 +15,9 @@
     "wasm_exec.js",
     "tsgo-ast.wasm"
   ],
-  "sideEffects": ["./wasm_exec.js"],
+  "sideEffects": [
+    "./wasm_exec.js"
+  ],
   "keywords": [
     "typescript",
     "javascript",
