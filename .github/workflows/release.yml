@@ -94,7 +94,7 @@ jobs:
       - uses: actions/setup-node@v6
         if: steps.detect_release.outputs.should_release == 'true'
         with:
-          node-version: "22"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
       - uses: oven-sh/setup-bun@v2
