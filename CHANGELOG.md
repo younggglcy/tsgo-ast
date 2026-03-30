@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 - 2026-03-30
+
+- refactor: simplify parse pipeline and add benchmarks (#13)
+- ci: upgrade setup-node to v6 for release publish (#12)
+- fix: add directory field to repository in package.json
+- fix(release): handle squash-merged release commits (#11)
+
 ## 0.1.1 - 2026-03-28
 
 - fix(release): handle inherited stdio in release helper
