@@ -11,6 +11,7 @@
     "test:go": "go test ./...",
     "test:js": "bun test scripts/*.test.mjs",
     "test:release": "bun run test:js",
+    "bench": "bun run build && bun bench/parse.bench.mjs",
     "check": "bun run typecheck && bun run test:js && bun run test:go && bun run build",
     "release:pr": "node scripts/release-pr.mjs",
     "release": "bun run build && cd npm && npm publish --provenance --access public"

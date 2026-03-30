@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-03-27
+last_updated: 2026-03-29
 ---
 
 # Architecture
@@ -30,13 +30,18 @@ source code string
                 │
                 ▼
         `cmd/wasm/main.go`
-          ├─ maps `lang` to `core.ScriptKind`
-          ├─ maps `lang` to a virtual file name
-          ├─ calls `parser.ParseSourceFile(...)`
-          ├─ creates `goast.NewSerializer(sourceFile)`
-          ├─ runs `serializer.SerializeNode(sourceFile.AsNode())`
-          ├─ collects diagnostics
+          ├─ extracts JS arguments
+          ├─ delegates to `goast.Parse(code, lang)`
           └─ returns `json.Marshal(...)` + `JSON.parse(...)`
+                │
+                ▼
+          `goast/parse.go`
+            ├─ maps `lang` to parser config
+            ├─ calls `parser.ParseSourceFile(...)`
+            ├─ creates `goast.NewSerializer(sourceFile)`
+            ├─ runs `serializer.SerializeNode(sourceFile.AsNode())`
+            ├─ collects diagnostics
+            └─ builds `sourceFileInfo`
                 │
                 ▼
       `ParseResult { offsetEncoding, ast, errors, sourceFileInfo }`
@@ -49,12 +54,13 @@ tsgo-ast/
 ├── cmd/wasm/
 │   └── main.go              # JS ↔ Go bridge, registers goParseAST
 ├── goast/
-│   ├── comments.go          # leading / trailing comment extraction
 │   ├── concrete.go          # ast.Kind → As*() dispatch
-│   ├── flags.go             # node flag decoding
-│   ├── serialize.go         # shared reflection-based traversal and skip rules
+│   ├── parse.go             # parse orchestration and typed result envelope
 │   ├── serializer.go        # SourceFile-aware enriched serializer
+│   ├── bench_test.go        # Go-side benchmarks
 │   └── serializer_test.go   # serializer behavior tests
+├── bench/
+│   └── parse.bench.mjs      # end-to-end JS benchmark
 ├── src/
 │   ├── index.ts             # public JS/TS API
 │   └── wasm_exec.js.d.ts    # type declarations for Go WASM glue
@@ -99,14 +105,9 @@ Two design choices matter here:
 
 `cmd/wasm/main.go` is the single WASM entry point, with a deliberately narrow responsibility set:
 
-1. Map `lang` to `core.ScriptKind`
-2. Generate a matching virtual file name
-3. Call `parser.ParseSourceFile(...)`
-4. Create `goast.NewSerializer(sourceFile)`
-5. Serialize the `SourceFile` root node
-6. Collect `sourceFile.Diagnostics()`
-7. Build `sourceFileInfo`
-8. `json.Marshal` the result and convert it back with JS `JSON.parse`
+1. Extract `code` and `lang` from JS
+2. Delegate to `goast.Parse(code, lang)`
+3. `json.Marshal` the typed result and convert it back with JS `JSON.parse`
 
 The project uses `json.Marshal` → `JSON.parse` instead of constructing a deep `js.Value` tree manually for two reasons:
 
@@ -117,16 +118,29 @@ The whole `parseAST` path is also wrapped with `recover()`, so a panic is downgr
 
 ## Serialization Pipeline
 
-`goast/` is the main domain layer of the repository. The design has evolved from a plain structural mirror into a structural mirror plus context-aware enrichments.
+`goast/` is the main domain layer of the repository. It now owns both parse orchestration and serialization, while keeping the WASM entrypoint intentionally thin.
+
+### `goast/parse.go`
+
+`Parse(code, lang)` is the internal pipeline used by the WASM bridge. It is responsible for:
+
+- mapping language strings to `core.ScriptKind` and virtual file names
+- calling `parser.ParseSourceFile(...)`
+- creating `goast.NewSerializer(sourceFile)`
+- serializing the root node
+- collecting diagnostics
+- building the typed `sourceFileInfo` envelope
 
 ### `goast/serializer.go`
 
-`Serializer` is bound to a single `*ast.SourceFile`, which gives it the context needed for richer output:
+`Serializer` is bound to a single `*ast.SourceFile`, which gives it the context needed for richer output and hot-path caching:
 
 - `sf.Text()`
 - `scanner.GetECMALineStarts(sf)`
 - `ast.ComputePositionMap(text)`
 - A `NodeFactory` used for comment extraction
+- cached reflection metadata for concrete structs
+- memoized leading / trailing comment lookups by position
 
 That context allows it to add more than just common node fields:
 
@@ -139,34 +153,13 @@ That context allows it to add more than just common node fields:
 
 One important invariant is that **all exported offsets use UTF-16**. `typescript-go` uses byte offsets internally, while JS/TS tooling typically works with UTF-16 code units, so `Serializer.EncodeOffset()` converts positions into UTF-16 offsets.
 
-### `goast/serialize.go`
-
-This file contains the low-level traversal logic that expands AST structures through reflection:
-
-- Walk exported fields on concrete node structs
-- Handle `*ast.Node`, `*ast.NodeList`, `*ast.ModifierList`, slices, and similar containers
-- Skip embedded base types and internal fields that should not be exposed to JS
-- Provide reusable structural traversal that `serializer.go` builds on top of
-
-A more accurate mental model today is:
-
-- `serialize.go` handles **generic structural traversal**
-- `serializer.go` handles **SourceFile-aware enriched output**
-
 ### `goast/concrete.go`
 
 `GetConcreteValue()` dispatches on `ast.Kind` and calls the matching `As*()` method so the reflection layer can inspect the correct concrete struct. The dispatch table is long, but the responsibility is intentionally narrow: **make sure each Kind resolves to the right concrete type**.
 
 `KindName()` converts the underlying `Kind` name into the JS-facing `type` field.
 
-### `goast/comments.go` and `goast/flags.go`
-
-These files isolate enrichment-specific logic from the main serializer flow:
-
-- `comments.go` extracts leading and trailing comments
-- `flags.go` decodes bit flags into readable string arrays
-
-This split keeps `Serializer` as an orchestration layer instead of letting it grow into a monolithic file.
+The serializer intentionally keeps this dispatch table separate from the parse pipeline because the current JSON shape still depends on reflecting the correct concrete struct for each node kind.
 
 ## Result Shape
 
@@ -207,6 +200,7 @@ The root `package.json` defines three core commands:
 bun run build:wasm
 bun run build:js
 bun run build
+bun run bench
 ```
 
 The actual flow is:
@@ -218,6 +212,17 @@ The actual flow is:
    - Bundles `src/index.ts` into `npm/index.js`
    - Uses `isolatedDeclarationPlugin()` to emit declaration output
    - Marks `./wasm_exec.js` as external so the bundler does not inline it
+
+### Benchmarks
+
+The repository tracks performance at two levels:
+
+- `bun run bench`
+  - rebuilds the publishable package
+  - initializes the WASM runtime once
+  - measures steady-state end-to-end `parseAST()` throughput from JS
+- `go test -bench . ./goast`
+  - measures Go-side parse + serialize and serializer-only hot paths
 
 The publish root is `npm/`, not the repository root. That affects three maintenance rules:
 

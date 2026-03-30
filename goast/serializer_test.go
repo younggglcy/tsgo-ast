@@ -319,6 +319,76 @@ func TestSerializerBackwardCompat(t *testing.T) {
 	}
 }
 
+func TestCollectCommentHelpersBackwardCompat(t *testing.T) {
+	sf := parseSource("// lead\nconst skull = \"💀\" // trail")
+	statement := sf.Statements.Nodes[0]
+	serializer := goast.NewSerializer(sf)
+	factory := ast.NewNodeFactory(ast.NodeFactoryHooks{})
+
+	leading := goast.CollectLeadingComments(factory, sf.Text(), statement.Pos(), serializer.EncodeOffset)
+	if len(leading) != 1 {
+		t.Fatalf("expected 1 leading comment, got %d", len(leading))
+	}
+	leadingComment := mustNodeMap(t, leading[0], "expected serialized leading comment")
+	if leadingComment["type"] != "line" {
+		t.Fatalf("expected line leading comment, got %v", leadingComment["type"])
+	}
+	if leadingComment["text"] != "// lead" {
+		t.Fatalf("expected leading comment text // lead, got %v", leadingComment["text"])
+	}
+
+	trailing := goast.CollectTrailingComments(factory, sf.Text(), statement.End(), serializer.EncodeOffset)
+	if len(trailing) != 1 {
+		t.Fatalf("expected 1 trailing comment, got %d", len(trailing))
+	}
+	trailingComment := mustNodeMap(t, trailing[0], "expected serialized trailing comment")
+	if trailingComment["type"] != "line" {
+		t.Fatalf("expected line trailing comment, got %v", trailingComment["type"])
+	}
+	if trailingComment["text"] != "// trail" {
+		t.Fatalf("expected trailing comment text // trail, got %v", trailingComment["text"])
+	}
+	if trailingComment["start"] == statement.End() {
+		t.Fatal("expected encoded trailing comment start offset")
+	}
+}
+
+func TestCollectCommentHelpersNilEncoderUsesRawOffsets(t *testing.T) {
+	sf := parseSource("// lead\nconst x = 1")
+	statement := sf.Statements.Nodes[0]
+	factory := ast.NewNodeFactory(ast.NodeFactoryHooks{})
+
+	leading := goast.CollectLeadingComments(factory, sf.Text(), statement.Pos(), nil)
+	if len(leading) != 1 {
+		t.Fatalf("expected 1 leading comment, got %d", len(leading))
+	}
+
+	rawStart := strings.Index(sf.Text(), "// lead")
+	if rawStart < 0 {
+		t.Fatal("expected comment text in source")
+	}
+	comment := mustNodeMap(t, leading[0], "expected serialized leading comment")
+	if comment["start"] != rawStart {
+		t.Fatalf("expected raw start offset %d, got %v", rawStart, comment["start"])
+	}
+}
+
+func TestDecodeNodeFlagsBackwardCompat(t *testing.T) {
+	flags := goast.DecodeNodeFlags(ast.NodeFlagsConst | ast.NodeFlagsAmbient)
+	if len(flags) != 2 {
+		t.Fatalf("expected 2 flags, got %d", len(flags))
+	}
+	if flags[0] != "const" {
+		t.Fatalf("expected first flag const, got %q", flags[0])
+	}
+	if flags[1] != "ambient" {
+		t.Fatalf("expected second flag ambient, got %q", flags[1])
+	}
+	if got := goast.DecodeNodeFlags(0); got != nil {
+		t.Fatalf("expected nil flags for zero bitmask, got %v", got)
+	}
+}
+
 func BenchmarkSerializerLongSingleLineUTF16Offsets(b *testing.B) {
 	code := buildLongSingleLineSource(4000)
 	sf := parseSource(code)

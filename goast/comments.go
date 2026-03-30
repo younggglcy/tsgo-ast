@@ -5,14 +5,6 @@ import (
 	"github.com/microsoft/typescript-go/shim/scanner"
 )
 
-// commentKindToString maps ast.Kind to "line" or "block".
-func commentKindToString(kind ast.Kind) string {
-	if kind == ast.KindSingleLineCommentTrivia {
-		return "line"
-	}
-	return "block"
-}
-
 func commentOffset(pos int, encodeOffset func(int) int) int {
 	if encodeOffset == nil {
 		return pos
