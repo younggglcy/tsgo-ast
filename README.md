@@ -1,6 +1,19 @@
-# tsgo-ast
+<p align="center">
+  <img src="logos/combo.svg" alt="tsgo-ast" width="380">
+</p>
 
-`tsgo-ast` is a repository for exposing the Go-based `typescript-go` parser to JavaScript and TypeScript through WebAssembly.
+<p align="center">
+  <a href="https://www.npmjs.com/package/tsgo-ast"><img src="https://img.shields.io/npm/v/tsgo-ast?color=654FF0&label=npm" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/tsgo-ast"><img src="https://img.shields.io/npm/dm/tsgo-ast?color=00ADD8" alt="npm downloads"></a>
+  <a href="https://github.com/younggglcy/tsgo-ast/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/tsgo-ast?color=3178C6" alt="license"></a>
+  <a href="https://github.com/younggglcy/tsgo-ast/actions"><img src="https://img.shields.io/github/actions/workflow/status/younggglcy/tsgo-ast/ci.yml?branch=main&label=CI" alt="CI"></a>
+</p>
+
+<p align="center">
+  Expose the Go-based <a href="https://github.com/microsoft/typescript-go">typescript-go</a> parser to JavaScript and TypeScript through WebAssembly.
+</p>
+
+---
 
 This repository contains two layers:
 

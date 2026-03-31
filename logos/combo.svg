@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 80" width="380" height="80" role="img" aria-labelledby="combo-title">
+  <title id="combo-title">tsgo-ast</title>
+  <defs>
+    <linearGradient id="c-root" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3178C6" />
+      <stop offset="100%" stop-color="#00ADD8" />
+    </linearGradient>
+    <linearGradient id="c-edge-l" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3178C6" stop-opacity="0.5" />
+      <stop offset="100%" stop-color="#654FF0" stop-opacity="0.7" />
+    </linearGradient>
+    <linearGradient id="c-edge-r" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00ADD8" stop-opacity="0.5" />
+      <stop offset="100%" stop-color="#654FF0" stop-opacity="0.7" />
+    </linearGradient>
+    <linearGradient id="c-mid-l" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3178C6" />
+      <stop offset="100%" stop-color="#00A29C" />
+    </linearGradient>
+    <linearGradient id="c-mid-r" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00A29C" />
+      <stop offset="100%" stop-color="#00ADD8" />
+    </linearGradient>
+    <radialGradient id="c-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#3178C6" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#3178C6" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Icon group -->
+  <g transform="translate(4, 4)">
+    <!-- Left bracket -->
+    <path d="M4,36 L18,12 M4,36 L18,60" stroke="#3178C6" stroke-width="5" stroke-linecap="round" fill="none" />
+    <!-- Right bracket -->
+    <path d="M68,36 L54,12 M68,36 L54,60" stroke="#00ADD8" stroke-width="5" stroke-linecap="round" fill="none" />
+
+    <!-- Tree edges -->
+    <line x1="36" y1="12" x2="27" y2="32" stroke="url(#c-edge-l)" stroke-width="2.2" stroke-linecap="round" />
+    <line x1="36" y1="12" x2="45" y2="32" stroke="url(#c-edge-r)" stroke-width="2.2" stroke-linecap="round" />
+    <line x1="27" y1="32" x2="23" y2="50" stroke="#654FF0" stroke-width="1.8" stroke-linecap="round" opacity="0.55" />
+    <line x1="27" y1="32" x2="31" y2="50" stroke="#654FF0" stroke-width="1.8" stroke-linecap="round" opacity="0.55" />
+    <line x1="45" y1="32" x2="41" y2="50" stroke="#654FF0" stroke-width="1.8" stroke-linecap="round" opacity="0.55" />
+    <line x1="45" y1="32" x2="49" y2="50" stroke="#654FF0" stroke-width="1.8" stroke-linecap="round" opacity="0.55" />
+
+    <!-- Root glow -->
+    <circle cx="36" cy="12" r="12" fill="url(#c-glow)" />
+
+    <!-- Root node -->
+    <circle cx="36" cy="12" r="6.5" fill="url(#c-root)" />
+    <circle cx="36" cy="12" r="2.2" fill="#FFF" opacity="0.9" />
+
+    <!-- Mid nodes -->
+    <circle cx="27" cy="32" r="5" fill="url(#c-mid-l)" />
+    <circle cx="45" cy="32" r="5" fill="url(#c-mid-r)" />
+
+    <!-- Leaf nodes -->
+    <circle cx="23" cy="50" r="3.8" fill="#654FF0" />
+    <circle cx="31" cy="50" r="3.8" fill="#654FF0" />
+    <circle cx="41" cy="50" r="3.8" fill="#654FF0" />
+    <circle cx="49" cy="50" r="3.8" fill="#654FF0" />
+  </g>
+
+  <!-- Wordmark -->
+  <text x="90" y="38" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', monospace" font-size="32" font-weight="700" letter-spacing="-0.5">
+    <tspan fill="#3178C6">ts</tspan><tspan fill="#00ADD8">go</tspan><tspan fill="#654FF0" font-weight="400">-ast</tspan>
+  </text>
+
+  <!-- Tagline -->
+  <text x="90" y="58" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#9CA3AF" letter-spacing="0.5">TypeScript AST via Go + WASM</text>
+</svg>

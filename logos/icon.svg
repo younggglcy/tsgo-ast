@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-labelledby="logo-title">
+  <title id="logo-title">tsgo-ast</title>
+  <defs>
+    <linearGradient id="root-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3178C6" />
+      <stop offset="100%" stop-color="#00ADD8" />
+    </linearGradient>
+    <linearGradient id="edge-grad-l" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3178C6" stop-opacity="0.5" />
+      <stop offset="100%" stop-color="#654FF0" stop-opacity="0.7" />
+    </linearGradient>
+    <linearGradient id="edge-grad-r" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00ADD8" stop-opacity="0.5" />
+      <stop offset="100%" stop-color="#654FF0" stop-opacity="0.7" />
+    </linearGradient>
+    <radialGradient id="root-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#3178C6" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#3178C6" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="mid-l" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3178C6" />
+      <stop offset="100%" stop-color="#00A29C" />
+    </linearGradient>
+    <linearGradient id="mid-r" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00A29C" />
+      <stop offset="100%" stop-color="#00ADD8" />
+    </linearGradient>
+  </defs>
+
+  <!-- Left bracket — TS blue -->
+  <path d="M12,64 L34,34 M12,64 L34,94" stroke="#3178C6" stroke-width="7" stroke-linecap="round" fill="none" />
+
+  <!-- Right bracket — Go cyan -->
+  <path d="M116,64 L94,34 M116,64 L94,94" stroke="#00ADD8" stroke-width="7" stroke-linecap="round" fill="none" />
+
+  <!-- Tree edges — gradient from parent color toward purple -->
+  <!-- Root → left mid -->
+  <line x1="64" y1="32" x2="48" y2="56" stroke="url(#edge-grad-l)" stroke-width="3" stroke-linecap="round" />
+  <!-- Root → right mid -->
+  <line x1="64" y1="32" x2="80" y2="56" stroke="url(#edge-grad-r)" stroke-width="3" stroke-linecap="round" />
+  <!-- Left mid → leaves -->
+  <line x1="48" y1="56" x2="40" y2="80" stroke="#654FF0" stroke-width="2.5" stroke-linecap="round" opacity="0.55" />
+  <line x1="48" y1="56" x2="56" y2="80" stroke="#654FF0" stroke-width="2.5" stroke-linecap="round" opacity="0.55" />
+  <!-- Right mid → leaves -->
+  <line x1="80" y1="56" x2="72" y2="80" stroke="#654FF0" stroke-width="2.5" stroke-linecap="round" opacity="0.55" />
+  <line x1="80" y1="56" x2="88" y2="80" stroke="#654FF0" stroke-width="2.5" stroke-linecap="round" opacity="0.55" />
+
+  <!-- Root glow -->
+  <circle cx="64" cy="32" r="18" fill="url(#root-glow)" />
+
+  <!-- Root node -->
+  <circle cx="64" cy="32" r="10" fill="url(#root-grad)" />
+  <circle cx="64" cy="32" r="3.5" fill="#FFFFFF" opacity="0.92" />
+
+  <!-- Mid-level nodes -->
+  <circle cx="48" cy="56" r="7.5" fill="url(#mid-l)" />
+  <circle cx="80" cy="56" r="7.5" fill="url(#mid-r)" />
+
+  <!-- Leaf nodes — WASM purple -->
+  <circle cx="40" cy="80" r="6" fill="#654FF0" />
+  <circle cx="56" cy="80" r="6" fill="#654FF0" />
+  <circle cx="72" cy="80" r="6" fill="#654FF0" />
+  <circle cx="88" cy="80" r="6" fill="#654FF0" />
+
+  <!-- Subtle inner highlights on leaves -->
+  <circle cx="38.5" cy="78.5" r="2" fill="#FFFFFF" opacity="0.15" />
+  <circle cx="54.5" cy="78.5" r="2" fill="#FFFFFF" opacity="0.15" />
+  <circle cx="70.5" cy="78.5" r="2" fill="#FFFFFF" opacity="0.15" />
+  <circle cx="86.5" cy="78.5" r="2" fill="#FFFFFF" opacity="0.15" />
+</svg>
